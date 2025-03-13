@@ -3,7 +3,6 @@ import uuid
 import asyncio
 import streamlit as st
 from datetime import datetime
-from dotenv import load_dotenv
 
 from agents import (
     Agent, 
@@ -16,10 +15,7 @@ from agents import (
 
 from pydantic import BaseModel
 
-# Load environment variables
-load_dotenv()
-
-# Set up page configuration
+# --- Streamlit Page Configuration ---
 st.set_page_config(
     page_title="OpenAI Researcher Agent",
     page_icon="📰",
@@ -27,12 +23,15 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Make sure API key is set
-if not os.environ.get("OPENAI_API_KEY"):
-    st.error("Please set your OPENAI_API_KEY environment variable")
+# --- Load the API Key ---
+# Try to load from st.secrets first; if not available, fallback to environment variables.
+if "OPENAI_API_KEY" in st.secrets:
+    os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+elif not os.environ.get("OPENAI_API_KEY"):
+    st.error("Please set your OPENAI_API_KEY in Streamlit secrets or as an environment variable.")
     st.stop()
 
-# App title and description
+# --- App Title and Description ---
 st.title("📰 OpenAI Researcher Agent")
 st.subheader("Powered by OpenAI Agents SDK")
 st.markdown("""
@@ -40,7 +39,7 @@ This app demonstrates the power of OpenAI's Agents SDK by creating a multi-agent
 that researches news topics and generates comprehensive research reports.
 """)
 
-# Define data models
+# --- Data Models ---
 class ResearchPlan(BaseModel):
     topic: str
     search_queries: list[str]
@@ -53,7 +52,7 @@ class ResearchReport(BaseModel):
     sources: list[str]
     word_count: int
 
-# Custom tool for saving facts found during research
+# --- Custom Tool for Saving Facts ---
 @function_tool
 def save_important_fact(fact: str, source: str = None) -> str:
     """Save an important fact discovered during research.
@@ -76,15 +75,15 @@ def save_important_fact(fact: str, source: str = None) -> str:
     
     return f"Fact saved: {fact}"
 
-# Define the agents
+# --- Define the Agents ---
 research_agent = Agent(
     name="Research Agent",
     instructions="You are a research assistant. Given a search term, you search the web for that term and"
-    "produce a concise summary of the results. The summary must 2-3 paragraphs and less than 300"
-    "words. Capture the main points. Write succintly, no need to have complete sentences or good"
-    "grammar. This will be consumed by someone synthesizing a report, so its vital you capture the"
-    "essence and ignore any fluff. Do not include any additional commentary other than the summary"
-    "itself.",
+    " produce a concise summary of the results. The summary must be 2-3 paragraphs and less than 300"
+    " words. Capture the main points. Write succinctly, no need to have complete sentences or perfect"
+    " grammar. This will be consumed by someone synthesizing a report, so it's vital you capture the"
+    " essence and ignore any fluff. Do not include any additional commentary other than the summary"
+    " itself.",
     model="gpt-4o-mini",
     tools=[
         WebSearchTool(),
@@ -96,12 +95,11 @@ editor_agent = Agent(
     name="Editor Agent",
     handoff_description="A senior researcher who writes comprehensive research reports",
     instructions="You are a senior researcher tasked with writing a cohesive report for a research query. "
-    "You will be provided with the original query, and some initial research done by a research "
+    "You will be provided with the original query and some initial research done by a research "
     "assistant.\n"
-    "You should first come up with an outline for the report that describes the structure and "
-    "flow of the report. Then, generate the report and return that as your final output.\n"
-    "The final output should be in markdown format, and it should be lengthy and detailed. Aim "
-    "for 5-10 pages of content, at least 1000 words.",
+    "First, create an outline for the report that describes its structure and flow. Then, generate the report "
+    "and return that as your final output.\n"
+    "The final output should be in markdown format, and it should be lengthy and detailed. Aim for 5-10 pages of content, at least 1000 words.",
     model="gpt-4o-mini",
     output_type=ResearchReport,
 )
@@ -109,13 +107,13 @@ editor_agent = Agent(
 triage_agent = Agent(
     name="Triage Agent",
     instructions="""You are the coordinator of this research operation. Your job is to:
-    1. Understand the user's research topic
+    1. Understand the user's research topic.
     2. Create a research plan with the following elements:
-       - topic: A clear statement of the research topic
-       - search_queries: A list of 3-5 specific search queries that will help gather information
-       - focus_areas: A list of 3-5 key aspects of the topic to investigate
-    3. Hand off to the Research Agent to collect information
-    4. After research is complete, hand off to the Editor Agent who will write a comprehensive report
+       - topic: A clear statement of the research topic.
+       - search_queries: A list of 3-5 specific search queries that will help gather information.
+       - focus_areas: A list of 3-5 key aspects of the topic to investigate.
+    3. Hand off to the Research Agent to collect information.
+    4. After research is complete, hand off to the Editor Agent who will write a comprehensive report.
     
     Make sure to return your plan in the expected structured format with topic, search_queries, and focus_areas.
     """,
@@ -127,12 +125,10 @@ triage_agent = Agent(
     output_type=ResearchPlan,
 )
 
-# Create sidebar for input and controls
+# --- Sidebar Input and Controls ---
 with st.sidebar:
     st.header("Research Topic")
-    user_topic = st.text_input(
-        "Enter a topic to research:",
-    )
+    user_topic = st.text_input("Enter a topic to research:")
     
     start_button = st.button("Start Research", type="primary", disabled=not user_topic)
     
@@ -149,10 +145,10 @@ with st.sidebar:
             user_topic = topic
             start_button = True
 
-# Main content area with two tabs
+# --- Main Content Area with Two Tabs ---
 tab1, tab2 = st.tabs(["Research Process", "Report"])
 
-# Initialize session state for storing results
+# --- Session State Initialization ---
 if "conversation_id" not in st.session_state:
     st.session_state.conversation_id = str(uuid.uuid4().hex[:16])
 if "collected_facts" not in st.session_state:
@@ -162,7 +158,7 @@ if "research_done" not in st.session_state:
 if "report_result" not in st.session_state:
     st.session_state.report_result = None
 
-# Main research function
+# --- Main Research Function ---
 async def run_research(topic):
     # Reset state for new research
     st.session_state.collected_facts = []
@@ -212,7 +208,7 @@ async def run_research(topic):
         
         # Check for new facts periodically
         previous_fact_count = 0
-        for i in range(15):  # Check more times to allow for more comprehensive research
+        for i in range(15):  # Allow for more comprehensive research
             current_facts = len(st.session_state.collected_facts)
             if current_facts > previous_fact_count:
                 with fact_placeholder.container():
@@ -262,7 +258,7 @@ async def run_research(topic):
     
     st.session_state.research_done = True
 
-# Run the research when the button is clicked
+# --- Run the Research When the Button is Clicked ---
 if start_button:
     with st.spinner(f"Researching: {user_topic}"):
         try:
@@ -273,14 +269,14 @@ if start_button:
             st.session_state.report_result = f"# Research on {user_topic}\n\nUnfortunately, an error occurred during the research process. Please try again later or with a different topic.\n\nError details: {str(e)}"
             st.session_state.research_done = True
 
-# Display results in the Report tab
+# --- Display Results in the Report Tab ---
 with tab2:
     if st.session_state.research_done and st.session_state.report_result:
         report = st.session_state.report_result
         
         # Handle different possible types of report results
         if hasattr(report, 'title'):
-            # We have a properly structured ResearchReport object
+            # Properly structured ResearchReport object
             title = report.title
             
             # Display outline if available
